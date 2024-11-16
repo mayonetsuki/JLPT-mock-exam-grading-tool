@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JLPT 模擬考試記分工具</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <link rel="stylesheet" href="assets/styles/main.css">
+</head>
+<body>
+    <div id="app" class="container mt-4">
+        <h1 class="text-center mb-4">JLPT 模擬考試記分工具</h1>
+
+        <!-- Page one: Setup exam questions -->
+        <div v-if="currentPage === 'setup'" class="setup-page">
+            <div class="alert alert-info mb-4">
+                請設定考試內容和各題目的模擬正確率
+            </div>
+
+            <div v-for="part in ['grammar', 'listening']" :key="part" class="mb-5">
+                <h2 class="section-title">{{ part === 'grammar' ? '文法' : '聆聽' }}</h2>
+
+                <div v-for="(section, sIndex) in examStructure[part]" :key="sIndex" class="card mb-3">
+                    <div class="card-header bg-light">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <input
+                                v-model="section.name"
+                                class="form-control w-50"
+                                placeholder="請輸入Section名稱"
+                                :class="{'is-invalid': showValidation && !section.name}"
+                            >
+                            <button @click="removeSection(part, sIndex)" class="btn btn-danger btn-sm">
+                                刪除Section
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="card-body">
+                        <div v-for="(question, qIndex) in section.questions" :key="qIndex" class="question-item">
+                            <div class="row g-3">
+                                <div class="col-md-4">
+                                    <input
+                                        v-model="question.name"
+                                        class="form-control"
+                                        placeholder="題目名稱"
+                                        :class="{'is-invalid': showValidation && !question.name}"
+                                    >
+                                </div>
+                                <div class="col-md-3">
+                                    <input
+                                        v-model="question.correctAnswer"
+                                        class="form-control"
+                                        placeholder="正確答案"
+                                        :class="{'is-invalid': showValidation && !question.correctAnswer}"
+                                    >
+                                </div>
+                                <div class="col-md-3">
+                                    <input
+                                        v-model.number="question.difficulty"
+                                        type="number"
+                                        min="0"
+                                        max="100"
+                                        class="form-control"
+                                        placeholder="模擬正確率(%)"
+                                        :class="{'is-invalid': showValidation && !isValidDifficulty(question.difficulty)}"
+                                    >
+                                </div>
+                                <div class="col-md-2">
+                                    <button @click="removeQuestion(section, qIndex)" class="btn btn-outline-danger btn-sm">
+                                        刪除題目
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        <button @click="addQuestion(section)" class="btn btn-primary btn-sm mt-3">
+                            新增題目
+                        </button>
+                    </div>
+                </div>
+
+                <button @click="addSection(part)" class="btn btn-success mb-3">
+                    新增{{ part === 'grammar' ? '文法' : '聆聽' }}Section
+                </button>
+            </div>
+
+            <div class="nav-buttons">
+                <button @click="saveAndProceed" class="btn btn-primary btn-lg">
+                    儲存並進入作答
+                </button>
+            </div>
+        </div>
+
+        <!-- 第二頁：作答頁面 -->
+        <div v-if="currentPage === 'answer'" class="answer-page">
+            <div class="alert alert-info mb-4">
+                請輸入考生答案
+            </div>
+
+            <div v-for="part in ['grammar', 'listening']" :key="part" class="mb-5">
+                <h2 class="section-title">{{ part === 'grammar' ? '文法' : '聆聽' }}</h2>
+
+                <div v-for="(section, sIndex) in examStructure[part]" :key="sIndex" class="card mb-3">
+                    <div class="card-header bg-light">
+                        <h3 class="h5 mb-0">{{ section.name }}</h3>
+                    </div>
+
+                    <div class="card-body">
+                        <div v-for="(question, qIndex) in section.questions" :key="qIndex" class="question-item">
+                            <div class="row align-items-center">
+                                <div class="col-md-6">
+                                    <label class="form-label">{{ question.name }}</label>
+                                </div>
+                                <div class="col-md-6">
+                                    <input
+                                        v-model="question.userAnswer"
+                                        class="form-control"
+                                        placeholder="請輸入答案"
+                                        :class="{'is-invalid': showValidation && !question.userAnswer}"
+                                    >
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="nav-buttons">
+                <button @click="currentPage = 'setup'" class="btn btn-secondary btn-lg me-2">
+                    返回設定
+                </button>
+                <button @click="submitAnswers" class="btn btn-primary btn-lg">
+                    提交答案
+                </button>
+            </div>
+        </div>
+
+        <!-- 第三頁：結果頁面 -->
+        <div v-if="currentPage === 'result'" class="result-page">
+            <div class="score-card">
+                <h2 class="section-title">總成績統計</h2>
+                <div class="row">
+                    <div class="col-md-4">
+                        <div class="result-summary">
+                            總分：{{ scores.total }}/180
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="result-summary">
+                            文法：{{ scores.grammar }}/90
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="result-summary">
+                            聆聽：{{ scores.listening }}/90
+                        </div>
+                    </div>
+                </div>
+                <div class="result-summary">
+                    答對題數：{{ scores.correctCount }}/{{ scores.totalQuestions }}
+                    ({{ (scores.correctCount/scores.totalQuestions*100).toFixed(1) }}%)
+                </div>
+            </div>
+
+            <div v-for="part in ['grammar', 'listening']" :key="part" class="mb-5">
+                <h2 class="section-title">{{ part === 'grammar' ? '文法' : '聆聽' }}詳細結果</h2>
+
+                <div v-for="section in examStructure[part]" :key="section.name" class="card mb-3">
+                    <div class="card-header bg-light">
+                        <h3 class="h5 mb-0">{{ section.name }}</h3>
+                    </div>
+
+                    <div class="card-body">
+                        <div v-for="question in section.questions" :key="question.name">
+                            <div :class="question.userAnswer === question.correctAnswer ? 'correct-answer' : 'wrong-answer'">
+                                <div class="row">
+                                    <div class="col-md-4">題目：{{ question.name }}</div>
+                                    <div class="col-md-4">正確答案：{{ question.correctAnswer }}</div>
+                                    <div class="col-md-4">考生答案：{{ question.userAnswer }}</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="nav-buttons">
+                <button @click="resetExam" class="btn btn-primary btn-lg">
+                    重新開始
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script src="assets/scripts/calculation.js"></script>
+</body>
+</html>
